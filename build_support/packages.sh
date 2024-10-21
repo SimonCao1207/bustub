@@ -88,9 +88,9 @@ install_linux() {
   # Install packages.
   apt-get -y install \
       build-essential \
-      clang-14 \
-      clang-format-14 \
-      clang-tidy-14 \
+      clang \
+      clang-format \
+      clang-tidy \
       cmake \
       doxygen \
       git \

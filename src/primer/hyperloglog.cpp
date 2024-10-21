@@ -10,18 +10,18 @@ HyperLogLog<KeyType>::HyperLogLog(int16_t n_bits) : cardinality_(0), n_bits(n_bi
 
 template <typename KeyType>
 auto HyperLogLog<KeyType>::ComputeBinary(const hash_t &hash) const -> std::bitset<BITSET_CAPACITY> {
-  return std::bitset<BITSET_CAPACITY> (hash);
+  return std::bitset<BITSET_CAPACITY>(hash);
 }
 
 template <typename KeyType>
 auto HyperLogLog<KeyType>::PositionOfLeftmostOne(const std::bitset<BITSET_CAPACITY> &bset) const -> uint64_t {
   /** @TODO(student) Implement this function! */
-  for (uint64_t i=BITSET_CAPACITY-1-n_bits; i>=0; i--) {
+  for (uint64_t i = BITSET_CAPACITY - 1 - n_bits; i >= 0; i--) {
     if (bset.test(i)) {
-      return BITSET_CAPACITY-i-n_bits;
+      return BITSET_CAPACITY - i - n_bits;
     }
   }
-  return BITSET_CAPACITY-n_bits;
+  return BITSET_CAPACITY - n_bits;
 }
 
 template <typename KeyType>
@@ -42,14 +42,14 @@ auto HyperLogLog<KeyType>::ComputeCardinality() -> void {
     return;
   }
   double sum_ = 0;
-  for (unsigned long i=0; i<num_registers; i++) {
+  for (unsigned long i = 0; i < num_registers; i++) {
     double p = std::pow(2, registers[i]);
     sum_ += 1.0 / p;
   }
   double harmonic_sum_ = 1.0 / sum_;
   double estimate = CONSTANT * num_registers * num_registers * harmonic_sum_;
 
-  cardinality_ = static_cast<size_t> (estimate);
+  cardinality_ = static_cast<size_t>(estimate);
 }
 
 template class HyperLogLog<int64_t>;

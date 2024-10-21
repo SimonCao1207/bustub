@@ -13,11 +13,15 @@
 
 /** @brief Dense bucket size. */
 #define DENSE_BUCKET_SIZE 4
+
 /** @brief Overflow bucket size. */
 #define OVERFLOW_BUCKET_SIZE 3
 
 /** @brief Total bucket size. */
 #define TOTAL_BUCKET_SIZE (DENSE_BUCKET_SIZE + OVERFLOW_BUCKET_SIZE)
+
+/** @brief Capacity of the bitset stream. */
+#define BITSET_CAPACITY 64
 
 namespace bustub {
 
@@ -54,6 +58,9 @@ class HyperLogLogPresto {
   /** @brief Function to compute cardinality. */
   auto ComputeCardinality() -> void;
 
+  auto RightMostContiguousZeros(const std::bitset<BITSET_CAPACITY> &bset) -> uint64_t;
+  auto ReconstructFromDenseLayer(uint64_t &bucket_index) -> uint64_t;
+
  private:
   /** @brief Calculate Hash.
    *
@@ -83,6 +90,8 @@ class HyperLogLogPresto {
   uint64_t cardinality_;
 
   // TODO(student) - can add more data structures as required
+  size_t n_bits;
+  uint64_t num_buckets;
 };
 
 }  // namespace bustub
