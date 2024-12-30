@@ -16,6 +16,7 @@
 #include <list>
 #include <mutex>  // NOLINT
 #include <optional>
+#include <queue>
 #include <unordered_map>
 #include <vector>
 
@@ -27,18 +28,6 @@ const size_t INF = std::numeric_limits<size_t>::max();
 namespace bustub {
 
 enum class AccessType { Unknown = 0, Lookup, Scan, Index };
-
-class Compare {
- public:
-  bool operator()(LRUKNode &lhs, LRUKNode &rhs) const {
-    size_t l_kDistance = lhs.GetKDistance();
-    size_t r_kDistance = rhs.GetKDistance();
-    if (l_kDistance == INF && r_kDistance == INF) {
-      return lhs.GetLastestHistory() < rhs.GetLastestHistory();
-    }
-    return l_kDistance < r_kDistance;  // max heap
-  }
-};
 
 class LRUKNode {
  public:
@@ -60,7 +49,7 @@ class LRUKNode {
     return history_.back() - history_.front();
   }
 
-  size_t GetLastestHistory() {
+  size_t GetLatestHistory() {
     if (history_.size() == 0) return 0;
     return history_.back();
   }
@@ -77,6 +66,18 @@ class LRUKNode {
   size_t k_;
   frame_id_t fid_;
   bool is_evictable_{false};
+};
+
+class Compare {
+ public:
+  bool operator()(LRUKNode &lhs, LRUKNode &rhs) const {
+    size_t l_kDistance = lhs.GetKDistance();
+    size_t r_kDistance = rhs.GetKDistance();
+    if (l_kDistance == INF && r_kDistance == INF) {
+      return lhs.GetLatestHistory() > rhs.GetLatestHistory();
+    }
+    return l_kDistance < r_kDistance;  // max heap
+  }
 };
 
 /**
@@ -195,7 +196,7 @@ class LRUKReplacer {
   // Remove maybe_unused if you start using them.
   std::unordered_map<frame_id_t, LRUKNode> node_store_;
   size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
+  size_t curr_size_{0};
   size_t replacer_size_;
   size_t k_;
   [[maybe_unused]] std::mutex latch_;

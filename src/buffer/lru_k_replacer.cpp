@@ -24,11 +24,22 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
     if (node.GetEvictable()) {
       node_queue.push(node);
     }
-    // TODO(namcvh) : pop from queue and evict frame
   }
+  if (node_queue.empty()) {
+    return std::nullopt;
+  }
+  // TODO(namcvh) : memory leaks ? should destroy evicted node
+  LRUKNode candidate_evict_node = node_queue.top();
+  node_queue.pop();
+  frame_id_t frame_id = candidate_evict_node.GetFrameId();
+  node_store_.erase(frame_id);
+  curr_size_--;
+  return frame_id;
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType access_type) {
+  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id > 0,
+                "Invalid: frame_id larger than replacer_size_");
   current_timestamp_++;
   auto it = node_store_.find(frame_id);
   if (it == node_store_.end()) {
@@ -41,15 +52,17 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
-  if (frame_id < 0 || node_store_.find(frame_id) == node_store_.end()) {
-    throw std::invalid_argument("Invalid frame ID : " + std::to_string(frame_id));
+  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id > 0,
+                "Invalid: frame_id larger than replacer_size_");
+  if (node_store_.find(frame_id) == node_store_.end()) {
+    return;
   }
   LRUKNode node = node_store_[frame_id];
   if (node.GetEvictable() != set_evictable) {
     int i = (node.GetEvictable() == true) ? -1 : 1;
-    replacer_size_ += i;
+    if (curr_size_ + i >= 0) curr_size_ += i;
   }
-  node.SetEvictable(set_evictable);
+  node_store_[frame_id].SetEvictable(set_evictable);
 }
 
 void LRUKReplacer::Remove(frame_id_t frame_id) {
@@ -61,9 +74,9 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
     throw std::logic_error("Cannot remove a non-evictable frame: " + std::to_string(frame_id));
   }
   node_store_.erase(frame_id);
-  replacer_size_--;
+  curr_size_--;
 }
 
-auto LRUKReplacer::Size() -> size_t { return replacer_size_; }
+auto LRUKReplacer::Size() -> size_t { return curr_size_; }
 
 }  // namespace bustub
