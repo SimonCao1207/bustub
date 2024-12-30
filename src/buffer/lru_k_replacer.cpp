@@ -19,8 +19,8 @@ LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_fra
 
 auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
   std::priority_queue<LRUKNode, std::vector<LRUKNode>, Compare> node_queue;
-  for (auto it = node_store_.begin(); it != node_store_.end(); it++) {
-    LRUKNode node = it->second;
+  for (auto &it : node_store_) {
+    LRUKNode &node = it.second;
     if (node.GetEvictable()) {
       node_queue.push(node);
     }
@@ -70,9 +70,7 @@ void LRUKReplacer::Remove(frame_id_t frame_id) {
     return;
   }
   LRUKNode node = node_store_[frame_id];
-  if (node.GetEvictable() == false) {
-    throw std::logic_error("Cannot remove a non-evictable frame: " + std::to_string(frame_id));
-  }
+  BUSTUB_ASSERT(node.GetEvictable() == false, "Invalid: frame_id larger than replacer_size_");
   node_store_.erase(frame_id);
   curr_size_--;
 }
