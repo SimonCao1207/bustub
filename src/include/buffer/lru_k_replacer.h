@@ -22,19 +22,61 @@
 #include "common/config.h"
 #include "common/macros.h"
 
+const size_t INF = std::numeric_limits<size_t>::max();
+
 namespace bustub {
 
 enum class AccessType { Unknown = 0, Lookup, Scan, Index };
 
+class Compare {
+ public:
+  bool operator()(LRUKNode &lhs, LRUKNode &rhs) const {
+    size_t l_kDistance = lhs.GetKDistance();
+    size_t r_kDistance = rhs.GetKDistance();
+    if (l_kDistance == INF && r_kDistance == INF) {
+      return lhs.GetLastestHistory() < rhs.GetLastestHistory();
+    }
+    return l_kDistance < r_kDistance;  // max heap
+  }
+};
+
 class LRUKNode {
+ public:
+  LRUKNode() : k_(0), fid_(0), is_evictable_(false) {}
+
+  LRUKNode(frame_id_t fid, size_t k, size_t current_timestamp) : k_(k), fid_(fid) {
+    history_.push_back(current_timestamp);
+  };
+
+  void UpdateHistory(size_t current_timestamp) {
+    history_.push_back(current_timestamp);
+    if (history_.size() > k_) {
+      history_.pop_front();
+    }
+  }
+
+  size_t GetKDistance() {
+    if (history_.size() < k_) return INF;
+    return history_.back() - history_.front();
+  }
+
+  size_t GetLastestHistory() {
+    if (history_.size() == 0) return 0;
+    return history_.back();
+  }
+
+  frame_id_t GetFrameId() { return fid_; }
+  void SetEvictable(bool evictable) { is_evictable_ = evictable; }
+  bool GetEvictable() { return is_evictable_; }
+
  private:
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
+  std::list<size_t> history_;
+  size_t k_;
+  frame_id_t fid_;
+  bool is_evictable_{false};
 };
 
 /**
@@ -151,11 +193,11 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  [[maybe_unused]] std::unordered_map<frame_id_t, LRUKNode> node_store_;
-  [[maybe_unused]] size_t current_timestamp_{0};
+  std::unordered_map<frame_id_t, LRUKNode> node_store_;
+  size_t current_timestamp_{0};
   [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
+  size_t replacer_size_;
+  size_t k_;
   [[maybe_unused]] std::mutex latch_;
 };
 
