@@ -14,6 +14,7 @@
 
 #include <limits>
 #include <list>
+#include <memory>
 #include <mutex>  // NOLINT
 #include <optional>
 #include <queue>
@@ -70,11 +71,11 @@ class LRUKNode {
 
 class Compare {
  public:
-  bool operator()(LRUKNode &lhs, LRUKNode &rhs) const {
-    size_t l_kDistance = lhs.GetKDistance();
-    size_t r_kDistance = rhs.GetKDistance();
+  bool operator()(const std::shared_ptr<LRUKNode> &lhs, std::shared_ptr<LRUKNode> &rhs) const {
+    size_t l_kDistance = lhs->GetKDistance();
+    size_t r_kDistance = rhs->GetKDistance();
     if (l_kDistance == INF && r_kDistance == INF) {
-      return lhs.GetLatestHistory() > rhs.GetLatestHistory();
+      return lhs->GetLatestHistory() > rhs->GetLatestHistory();
     }
     return l_kDistance < r_kDistance;  // max heap
   }
@@ -194,7 +195,7 @@ class LRUKReplacer {
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  std::unordered_map<frame_id_t, LRUKNode> node_store_;
+  std::unordered_map<frame_id_t, std::shared_ptr<LRUKNode>> node_store_;
   size_t current_timestamp_{0};
   size_t curr_size_{0};
   size_t replacer_size_;
