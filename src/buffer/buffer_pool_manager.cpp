@@ -122,7 +122,14 @@ auto BufferPoolManager::Size() const -> size_t { return num_frames_; }
  *
  * @return The page ID of the newly allocated page.
  */
-auto BufferPoolManager::NewPage() -> page_id_t { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+auto BufferPoolManager::NewPage() -> page_id_t {
+  page_id_t page_id = next_page_id_.load();
+  next_page_id_++;
+  disk_scheduler_->IncreaseDiskSpace(next_page_id_);
+  return page_id;
+}
+
+auto BufferPoolManager::IsInMemory(page_id_t page_id) -> bool { return page_table_.find(page_id) != page_table_.end(); }
 
 /**
  * @brief Removes a page from the database, both on disk and in memory.
@@ -192,7 +199,22 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool { UNIMPLEMENTED("T
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+  if (IsInMemory(page_id)) {
+    // Page in memory
+    frame_id_t frame_id = page_table_[page_id];
+    auto frame = frames_[frame_id];
+    // TODO(namcvh) : do we need to accquire latch of |frame| here ?
+    WritePageGuard write_pg(page_id, frame, replacer_, bpm_latch_);
+    return write_pg;
+  } else {
+    // TODO(namcvh) Page not in memory; try to bring page to memory first
+    // 1. There is free frame --> request page to this free frame
+    // 2. There no free frame left :
+    //    - write evicted page back to disk if it is dirty
+    //    - update page_table_ (erase evicted page)
+    //    - request page to this free frame
+  }
+  return std::nullopt;
 }
 
 /**
@@ -327,8 +349,14 @@ void BufferPoolManager::FlushAllPages() { UNIMPLEMENTED("TODO(P1): Add implement
  * @param page_id The page ID of the page we want to get the pin count of.
  * @return std::optional<size_t> The pin count if the page exists, otherwise `std::nullopt`.
  */
+
 auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+  std::scoped_lock latch(*bpm_latch_);
+  if (!IsInMemory(page_id)) return std::nullopt;
+  frame_id_t frame_id = page_table_[page_id];
+  auto frame = frames_[frame_id];
+  BUSTUB_ASSERT(frame != nullptr, "Frame is a nullptr");
+  return frame->pin_count_.load();
 }
 
 }  // namespace bustub
