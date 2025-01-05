@@ -158,9 +158,6 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
 
   // Invalidate the other guard
   that.page_id_ = -1;
-  that.frame_ = nullptr;
-  that.replacer_ = nullptr;
-  that.bpm_latch_ = nullptr;
   that.is_valid_ = false;
 }
 
