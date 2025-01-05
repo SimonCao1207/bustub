@@ -44,6 +44,7 @@ void FrameHeader::Reset() {
   std::fill(data_.begin(), data_.end(), 0);
   pin_count_.store(0);
   is_dirty_ = false;
+  page_id_ = std::nullopt;
 }
 
 /**
@@ -199,22 +200,56 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool { UNIMPLEMENTED("T
  * returns `std::nullopt`, otherwise returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  if (IsInMemory(page_id)) {
-    // Page in memory
+  if (IsInMemory(page_id)) {  // Page in memory
     frame_id_t frame_id = page_table_[page_id];
     auto frame = frames_[frame_id];
-    // TODO(namcvh) : do we need to accquire latch of |frame| here ?
-    WritePageGuard write_pg(page_id, frame, replacer_, bpm_latch_);
-    return write_pg;
-  } else {
-    // TODO(namcvh) Page not in memory; try to bring page to memory first
-    // 1. There is free frame --> request page to this free frame
-    // 2. There no free frame left :
-    //    - write evicted page back to disk if it is dirty
-    //    - update page_table_ (erase evicted page)
-    //    - request page to this free frame
+
+    // There can only be 1 `WritePageGuard` reading/writing a page at a time
+    std::scoped_lock lk(frame->rwlatch_);
+
+    return WritePageGuard(page_id, frame, replacer_, bpm_latch_);
+  } else {  // Page not in memory; try to bring page to memory first
+    frame_id_t free_frame_id;
+    if (!free_frames_.empty()) {  // Free frame available
+      free_frame_id = free_frames_.front();
+      free_frames_.pop_front();
+    } else {  // No free frames, evict frame from buffer pool
+      auto evicted_frame_id = replacer_->Evict();
+      if (!evicted_frame_id.has_value()) return std::nullopt;
+      free_frame_id = evicted_frame_id.value();
+
+      // Write evicted page back to disk if it is dirty
+      auto evicted_frame = frames_[free_frame_id];
+      BUSTUB_ASSERT(evicted_frame->page_id_.has_value(), "Evicted frame should store some page");
+      page_id_t evicted_page_id = evicted_frame->page_id_.value();
+      if (evicted_frame->is_dirty_) {
+        auto promise = disk_scheduler_->CreatePromise();
+        auto future = promise.get_future();
+        disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
+                                   /*page_id=*/evicted_page_id, std::move(promise)});
+        future.get();  // wait for completion
+      }
+
+      // Erase evicted page from page table and reset frame in buffer pool
+      page_table_.erase(evicted_page_id);
+      evicted_frame->Reset();
+    }
+
+    // Request page to this free frame
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    auto free_frame = frames_[free_frame_id];
+    disk_scheduler_->Schedule({/*is_write=*/false, free_frame->data_.data(),
+                               /*page_id=*/page_id, std::move(promise)});
+    future.get();  // wait for completion
+
+    // Update frame metadata
+    free_frame->page_id_ = page_id;
+    free_frame->is_dirty_ = false;
+    page_table_[page_id] = free_frame_id;
+
+    return WritePageGuard(page_id, free_frame, replacer_, bpm_latch_);
   }
-  return std::nullopt;
 }
 
 /**
@@ -351,7 +386,7 @@ void BufferPoolManager::FlushAllPages() { UNIMPLEMENTED("TODO(P1): Add implement
  */
 
 auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> {
-  std::scoped_lock latch(*bpm_latch_);
+  std::scoped_lock lk(*bpm_latch_);
   if (!IsInMemory(page_id)) return std::nullopt;
   frame_id_t frame_id = page_table_[page_id];
   auto frame = frames_[frame_id];

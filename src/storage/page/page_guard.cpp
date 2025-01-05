@@ -127,7 +127,11 @@ ReadPageGuard::~ReadPageGuard() { Drop(); }
 WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                                std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
     : page_id_(page_id), frame_(std::move(frame)), replacer_(std::move(replacer)), bpm_latch_(std::move(bpm_latch)) {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+  // std::scoped_lock<std::mutex> lock(*bpm_latch_); // should we acquire lock here ?
+  frame_->pin_count_++;
+  replacer_->RecordAccess(frame_->frame_id_);
+  replacer_->SetEvictable(frame_->frame_id_, false);
+  is_valid_ = true;
 }
 
 /**
@@ -147,16 +151,13 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  */
 WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
   page_id_ = that.page_id_;
-  frame_ = that.frame_;
-  replacer_ = that.replacer_;
-  bpm_latch_ = that.bpm_latch_;
+  frame_ = std::move(that.frame_);
+  replacer_ = std::move(that.replacer_);
+  bpm_latch_ = std::move(that.bpm_latch_);
   is_valid_ = that.is_valid_;
 
   // Invalidate the other guard
   that.page_id_ = -1;
-  that.frame_ = nullptr;
-  that.replacer_ = nullptr;
-  that.bpm_latch_ = nullptr;
   that.is_valid_ = false;
 }
 
@@ -222,7 +223,25 @@ auto WritePageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void WritePageGuard::Drop() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void WritePageGuard::Drop() {
+  if (!is_valid_) return;
+
+  // Take the bpm's latch here to update frame's eviction state
+  std::scoped_lock lk(*bpm_latch_);
+
+  // Unpin frame
+  frame_->pin_count_--;
+
+  // Set the frame as evictable on destruction
+  replacer_->SetEvictable(frame_->frame_id_, true);
+
+  // Release resource
+  page_id_ = -1;
+  frame_ = nullptr;
+  replacer_ = nullptr;
+  bpm_latch_ = nullptr;
+  is_valid_ = false;
+}
 
 /** @brief The destructor for `WritePageGuard`. This destructor simply calls `Drop()`. */
 WritePageGuard::~WritePageGuard() { Drop(); }

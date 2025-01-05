@@ -37,7 +37,7 @@ auto LRUKReplacer::Evict() -> std::optional<frame_id_t> {
 }
 
 void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType access_type) {
-  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id > 0,
+  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id >= 0,
                 "Invalid: frame_id larger than replacer_size_");
   current_timestamp_++;
   auto it = node_store_.find(frame_id);
@@ -52,7 +52,7 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id, [[maybe_unused]] AccessType
 }
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
-  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id > 0,
+  BUSTUB_ASSERT(static_cast<size_t>(frame_id) <= replacer_size_ && frame_id >= 0,
                 "Invalid: frame_id larger than replacer_size_");
   if (node_store_.find(frame_id) == node_store_.end()) {
     return;
