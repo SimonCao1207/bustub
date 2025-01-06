@@ -201,55 +201,66 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool { UNIMPLEMENTED("T
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
   if (IsInMemory(page_id)) {  // Page in memory
+    return AcquireWritePageGuard(page_id);
+  } else {  // Page not in memory; try to bring page to memory first
+      return BringPageToMemoryForWrite(page_id);
+  }
+}
+
+auto BufferPoolManager::AcquireWritePageGuard(page_id_t page_id) -> std::optional<WritePageGuard> {
     frame_id_t frame_id = page_table_[page_id];
     auto frame = frames_[frame_id];
-
     // There can only be 1 `WritePageGuard` reading/writing a page at a time
     std::scoped_lock lk(frame->rwlatch_);
-
     return WritePageGuard(page_id, frame, replacer_, bpm_latch_);
-  } else {  // Page not in memory; try to bring page to memory first
-    frame_id_t free_frame_id;
-    if (!free_frames_.empty()) {  // Free frame available
-      free_frame_id = free_frames_.front();
-      free_frames_.pop_front();
-    } else {  // No free frames, evict frame from buffer pool
-      auto evicted_frame_id = replacer_->Evict();
-      if (!evicted_frame_id.has_value()) return std::nullopt;
-      free_frame_id = evicted_frame_id.value();
+}
 
-      // Write evicted page back to disk if it is dirty
-      auto evicted_frame = frames_[free_frame_id];
-      BUSTUB_ASSERT(evicted_frame->page_id_.has_value(), "Evicted frame should store some page");
-      page_id_t evicted_page_id = evicted_frame->page_id_.value();
-      if (evicted_frame->is_dirty_) {
-        auto promise = disk_scheduler_->CreatePromise();
-        auto future = promise.get_future();
-        disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
-                                   /*page_id=*/evicted_page_id, std::move(promise)});
-        future.get();  // wait for completion
-      }
+auto BufferPoolManager::GetFreeFrame() -> std::optional<frame_id_t> {
+  frame_id_t free_frame_id;
+  if (!free_frames_.empty()) {  // Free frame available
+    free_frame_id = free_frames_.front();
+    free_frames_.pop_front();
+    return free_frame_id;
+  }
+  // No free frames, evict frame from buffer pool
+  return replacer_->Evict();
+}
 
-      // Erase evicted page from page table and reset frame in buffer pool
-      page_table_.erase(evicted_page_id);
-      evicted_frame->Reset();
-    }
+auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::optional<WritePageGuard> {
+  BUSTUB_ASSERT(!IsInMemory(page_id), "Page is already in memory !");
+  auto free_frame_id = GetFreeFrame();
+  if (!free_frame_id.has_value()) return std::nullopt;
+  auto evicted_frame = frames_[free_frame_id.value()];
 
-    // Request page to this free frame
+  // Write evicted page back to disk if it is dirty
+  if (evicted_frame->is_dirty_) {
+    page_id_t evicted_page_id = evicted_frame->page_id_.value();
     auto promise = disk_scheduler_->CreatePromise();
     auto future = promise.get_future();
-    auto free_frame = frames_[free_frame_id];
-    disk_scheduler_->Schedule({/*is_write=*/false, free_frame->data_.data(),
-                               /*page_id=*/page_id, std::move(promise)});
+    disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
+                                /*page_id=*/evicted_page_id, std::move(promise)});
     future.get();  // wait for completion
-
-    // Update frame metadata
-    free_frame->page_id_ = page_id;
-    free_frame->is_dirty_ = false;
-    page_table_[page_id] = free_frame_id;
-
-    return WritePageGuard(page_id, free_frame, replacer_, bpm_latch_);
   }
+
+  // Erase evicted page from page table and reset frame in buffer pool
+  if (evicted_frame->page_id_.has_value()){
+    page_table_.erase(evicted_frame->page_id_.value());
+  }
+  evicted_frame->Reset();
+
+  // Request page to this free frame
+  auto promise = disk_scheduler_->CreatePromise();
+  auto future = promise.get_future();
+  disk_scheduler_->Schedule({/*is_write=*/false, evicted_frame->data_.data(),
+                              /*page_id=*/page_id, std::move(promise)});
+  future.get();  // wait for completion
+
+  // Update frame metadata
+  evicted_frame->page_id_ = page_id;
+  evicted_frame->is_dirty_ = false;
+  page_table_[page_id] = free_frame_id.value();
+
+  return WritePageGuard(page_id, evicted_frame, replacer_, bpm_latch_);
 }
 
 /**
