@@ -125,7 +125,9 @@ class BufferPoolManager {
   auto GetPinCount(page_id_t page_id) -> std::optional<size_t>;
   auto IsInMemory(page_id_t page_id) -> bool;
   auto AcquireWritePageGuard(page_id_t page_id) -> std::optional<WritePageGuard>;
+  auto AcquireReadPageGuard(page_id_t page_id) -> std::optional<ReadPageGuard>;
   auto BringPageToMemoryForWrite(page_id_t page_id) -> std::optional<WritePageGuard>;
+  auto BringPageToMemoryForRead(page_id_t page_id) -> std::optional<ReadPageGuard>;
   auto GetFreeFrame() -> std::optional<frame_id_t>;
 
  private:

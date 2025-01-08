@@ -203,16 +203,22 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
   if (IsInMemory(page_id)) {  // Page in memory
     return AcquireWritePageGuard(page_id);
   } else {  // Page not in memory; try to bring page to memory first
-      return BringPageToMemoryForWrite(page_id);
+    return BringPageToMemoryForWrite(page_id);
   }
 }
 
 auto BufferPoolManager::AcquireWritePageGuard(page_id_t page_id) -> std::optional<WritePageGuard> {
-    frame_id_t frame_id = page_table_[page_id];
-    auto frame = frames_[frame_id];
-    // There can only be 1 `WritePageGuard` reading/writing a page at a time
-    std::scoped_lock lk(frame->rwlatch_);
-    return WritePageGuard(page_id, frame, replacer_, bpm_latch_);
+  frame_id_t frame_id = page_table_[page_id];
+  auto frame = frames_[frame_id];
+  // There can only be 1 `WritePageGuard` reading/writing a page at a time
+  std::scoped_lock lk(frame->rwlatch_);
+  return WritePageGuard(page_id, frame, replacer_, bpm_latch_);
+}
+
+auto BufferPoolManager::AcquireReadPageGuard(page_id_t page_id) -> std::optional<ReadPageGuard> {
+  frame_id_t frame_id = page_table_[page_id];
+  auto frame = frames_[frame_id];
+  return ReadPageGuard(page_id, frame, replacer_, bpm_latch_);
 }
 
 auto BufferPoolManager::GetFreeFrame() -> std::optional<frame_id_t> {
@@ -238,12 +244,12 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
     auto promise = disk_scheduler_->CreatePromise();
     auto future = promise.get_future();
     disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
-                                /*page_id=*/evicted_page_id, std::move(promise)});
+                               /*page_id=*/evicted_page_id, std::move(promise)});
     future.get();  // wait for completion
   }
 
   // Erase evicted page from page table and reset frame in buffer pool
-  if (evicted_frame->page_id_.has_value()){
+  if (evicted_frame->page_id_.has_value()) {
     page_table_.erase(evicted_frame->page_id_.value());
   }
   evicted_frame->Reset();
@@ -252,7 +258,7 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
   auto promise = disk_scheduler_->CreatePromise();
   auto future = promise.get_future();
   disk_scheduler_->Schedule({/*is_write=*/false, evicted_frame->data_.data(),
-                              /*page_id=*/page_id, std::move(promise)});
+                             /*page_id=*/page_id, std::move(promise)});
   future.get();  // wait for completion
 
   // Update frame metadata
@@ -261,6 +267,43 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
   page_table_[page_id] = free_frame_id.value();
 
   return WritePageGuard(page_id, evicted_frame, replacer_, bpm_latch_);
+}
+
+auto BufferPoolManager::BringPageToMemoryForRead(page_id_t page_id) -> std::optional<ReadPageGuard> {
+  BUSTUB_ASSERT(!IsInMemory(page_id), "Page is already in memory !");
+  auto free_frame_id = GetFreeFrame();
+  if (!free_frame_id.has_value()) return std::nullopt;
+  auto evicted_frame = frames_[free_frame_id.value()];
+
+  // Write evicted page back to disk if it is dirty
+  if (evicted_frame->is_dirty_) {
+    page_id_t evicted_page_id = evicted_frame->page_id_.value();
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
+                               /*page_id=*/evicted_page_id, std::move(promise)});
+    future.get();  // wait for completion
+  }
+
+  // Erase evicted page from page table and reset frame in buffer pool
+  if (evicted_frame->page_id_.has_value()) {
+    page_table_.erase(evicted_frame->page_id_.value());
+  }
+  evicted_frame->Reset();
+
+  // Request page to this free frame
+  auto promise = disk_scheduler_->CreatePromise();
+  auto future = promise.get_future();
+  disk_scheduler_->Schedule({/*is_write=*/false, evicted_frame->data_.data(),
+                             /*page_id=*/page_id, std::move(promise)});
+  future.get();  // wait for completion
+
+  // Update frame metadata
+  evicted_frame->page_id_ = page_id;
+  evicted_frame->is_dirty_ = false;
+  page_table_[page_id] = free_frame_id.value();
+
+  return ReadPageGuard(page_id, evicted_frame, replacer_, bpm_latch_);
 }
 
 /**
@@ -288,7 +331,11 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
  * returns `std::nullopt`, otherwise returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+  if (IsInMemory(page_id)) {  // Page in memory
+    return AcquireReadPageGuard(page_id);
+  } else {  // Page not in memory; try to bring page to memory first
+    return BringPageToMemoryForRead(page_id);
+  }
 }
 
 /**

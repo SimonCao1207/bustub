@@ -29,7 +29,11 @@ namespace bustub {
 ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame,
                              std::shared_ptr<LRUKReplacer> replacer, std::shared_ptr<std::mutex> bpm_latch)
     : page_id_(page_id), frame_(std::move(frame)), replacer_(std::move(replacer)), bpm_latch_(std::move(bpm_latch)) {
-  UNIMPLEMENTED("TODO(P1): Add implementation.");
+  // std::scoped_lock<std::mutex> lock(*bpm_latch_); // should we acquire lock here ?
+  frame_->pin_count_++;
+  replacer_->RecordAccess(frame_->frame_id_);
+  replacer_->SetEvictable(frame_->frame_id_, false);
+  is_valid_ = true;
 }
 
 /**
@@ -47,7 +51,17 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
  *
  * @param that The other page guard.
  */
-ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {}
+ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
+  page_id_ = that.page_id_;
+  frame_ = std::move(that.frame_);
+  replacer_ = std::move(that.replacer_);
+  bpm_latch_ = std::move(that.bpm_latch_);
+  is_valid_ = that.is_valid_;
+
+  // Invalidate the other guard
+  that.page_id_ = -1;
+  that.is_valid_ = false;
+}
 
 /**
  * @brief The move assignment operator for `ReadPageGuard`.
@@ -66,7 +80,33 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {}
  * @param that The other page guard.
  * @return ReadPageGuard& The newly valid `ReadPageGuard`.
  */
-auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & { return *this; }
+auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
+  if (this != &that) {  // Avoid self-assignment
+    if (is_valid_) {
+      // Release resource
+      frame_->Reset();
+      frame_.reset();
+      if (bpm_latch_) {
+        bpm_latch_->unlock();
+        bpm_latch_.reset();
+      }
+      replacer_.reset();
+      page_id_ = -1;
+    }
+
+    // Transfer resources
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    is_valid_ = that.is_valid_;
+
+    // Invalidate the other guard
+    that.page_id_ = -1;
+    that.is_valid_ = false;
+  }
+  return *this;
+}
 
 /**
  * @brief Gets the page ID of the page this guard is protecting.
@@ -103,7 +143,25 @@ auto ReadPageGuard::IsDirty() const -> bool {
  *
  * TODO(P1): Add implementation.
  */
-void ReadPageGuard::Drop() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void ReadPageGuard::Drop() {
+  if (!is_valid_) return;
+
+  // Take the bpm's latch here to update frame's eviction state
+  std::scoped_lock lk(*bpm_latch_);
+
+  // Unpin frame
+  frame_->pin_count_--;
+
+  // Set the frame as evictable on destruction
+  replacer_->SetEvictable(frame_->frame_id_, true);
+
+  // Release resource
+  page_id_ = -1;
+  frame_ = nullptr;
+  replacer_ = nullptr;
+  bpm_latch_ = nullptr;
+  is_valid_ = false;
+}
 
 /** @brief The destructor for `ReadPageGuard`. This destructor simply calls `Drop()`. */
 ReadPageGuard::~ReadPageGuard() { Drop(); }
@@ -178,7 +236,34 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
  * @param that The other page guard.
  * @return WritePageGuard& The newly valid `WritePageGuard`.
  */
-auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & { return *this; }
+auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {
+  if (this != &that) {  // Avoid self-assignment
+    if (is_valid_) {
+      // Release resource
+      frame_->Reset();
+      frame_.reset();
+      if (bpm_latch_) {
+        bpm_latch_->unlock();
+        bpm_latch_.reset();
+      }
+      replacer_.reset();
+      page_id_ = -1;
+    }
+
+    // Transfer resources
+    page_id_ = that.page_id_;
+    frame_ = std::move(that.frame_);
+    replacer_ = std::move(that.replacer_);
+    bpm_latch_ = std::move(that.bpm_latch_);
+    is_valid_ = that.is_valid_;
+
+    // Invalidate the other guard
+    that.page_id_ = -1;
+    that.is_valid_ = false;
+  }
+
+  return *this;
+}
 
 /**
  * @brief Gets the page ID of the page this guard is protecting.
@@ -201,6 +286,7 @@ auto WritePageGuard::GetData() const -> const char * {
  */
 auto WritePageGuard::GetDataMut() -> char * {
   BUSTUB_ENSURE(is_valid_, "tried to use an invalid write guard");
+  frame_->is_dirty_ = true;
   return frame_->GetDataMut();
 }
 
