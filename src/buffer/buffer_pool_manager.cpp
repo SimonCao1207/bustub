@@ -158,7 +158,19 @@ auto BufferPoolManager::IsInMemory(page_id_t page_id) -> bool { return page_tabl
  * @param page_id The page ID of the page we want to delete.
  * @return `false` if the page exists but could not be deleted, `true` if the page didn't exist or deletion succeeded.
  */
-auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
+  // TODO(namcvh) : optimize disk space after deleting pages
+  // assume not run out of disk for now
+  if (IsInMemory(page_id)) {
+    frame_id_t frame_id = page_table_[page_id];
+    auto frame = frames_[frame_id];
+    if (frame->pin_count_ > 0) return false;
+    frame->Reset();
+    page_table_.erase(page_id);
+  }
+  disk_scheduler_->DeallocatePage(page_id);
+  return true;
+}
 
 /**
  * @brief Acquires an optional write-locked guard over a page of data. The user can specify an `AccessType` if needed.
@@ -239,20 +251,7 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
   auto evicted_frame = frames_[free_frame_id.value()];
 
   // Write evicted page back to disk if it is dirty
-  if (evicted_frame->is_dirty_) {
-    page_id_t evicted_page_id = evicted_frame->page_id_.value();
-    auto promise = disk_scheduler_->CreatePromise();
-    auto future = promise.get_future();
-    disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
-                               /*page_id=*/evicted_page_id, std::move(promise)});
-    future.get();  // wait for completion
-  }
-
-  // Erase evicted page from page table and reset frame in buffer pool
-  if (evicted_frame->page_id_.has_value()) {
-    page_table_.erase(evicted_frame->page_id_.value());
-  }
-  evicted_frame->Reset();
+  if (evicted_frame->page_id_.has_value()) FlushPage(evicted_frame->page_id_.value());
 
   // Request page to this free frame
   auto promise = disk_scheduler_->CreatePromise();
@@ -276,20 +275,7 @@ auto BufferPoolManager::BringPageToMemoryForRead(page_id_t page_id) -> std::opti
   auto evicted_frame = frames_[free_frame_id.value()];
 
   // Write evicted page back to disk if it is dirty
-  if (evicted_frame->is_dirty_) {
-    page_id_t evicted_page_id = evicted_frame->page_id_.value();
-    auto promise = disk_scheduler_->CreatePromise();
-    auto future = promise.get_future();
-    disk_scheduler_->Schedule({/*is_write=*/true, evicted_frame->data_.data(),
-                               /*page_id=*/evicted_page_id, std::move(promise)});
-    future.get();  // wait for completion
-  }
-
-  // Erase evicted page from page table and reset frame in buffer pool
-  if (evicted_frame->page_id_.has_value()) {
-    page_table_.erase(evicted_frame->page_id_.value());
-  }
-  evicted_frame->Reset();
+  if (evicted_frame->page_id_.has_value()) FlushPage(evicted_frame->page_id_.value());
 
   // Request page to this free frame
   auto promise = disk_scheduler_->CreatePromise();
@@ -404,7 +390,21 @@ auto BufferPoolManager::ReadPage(page_id_t page_id, AccessType access_type) -> R
  * @param page_id The page ID of the page to be flushed.
  * @return `false` if the page could not be found in the page table, otherwise `true`.
  */
-auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
+  if (!IsInMemory(page_id)) return false;
+  frame_id_t frame_id = page_table_[page_id];
+  auto frame = frames_[frame_id];
+  if (frame->is_dirty_) {
+    auto promise = disk_scheduler_->CreatePromise();
+    auto future = promise.get_future();
+    disk_scheduler_->Schedule({/*is_write=*/true, frame->data_.data(),
+                               /*page_id=*/page_id, std::move(promise)});
+    future.get();  // wait for completion
+  }
+  page_table_.erase(page_id);
+  frame->Reset();
+  return true;
+}
 
 /**
  * @brief Flushes all page data that is in memory to disk.
@@ -416,7 +416,11 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool { UNIMPLEMENTED("TO
  *
  * TODO(P1): Add implementation
  */
-void BufferPoolManager::FlushAllPages() { UNIMPLEMENTED("TODO(P1): Add implementation."); }
+void BufferPoolManager::FlushAllPages() {
+  for (auto &it : page_table_) {
+    FlushPage(it.first);
+  }
+}
 
 /**
  * @brief Retrieves the pin count of a page. If the page does not exist in memory, return `std::nullopt`.
