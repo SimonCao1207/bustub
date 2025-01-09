@@ -83,15 +83,7 @@ ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
 auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
   if (this != &that) {  // Avoid self-assignment
     if (is_valid_) {
-      // Release resource
-      frame_->Reset();
-      frame_.reset();
-      if (bpm_latch_) {
-        bpm_latch_->unlock();
-        bpm_latch_.reset();
-      }
-      replacer_.reset();
-      page_id_ = -1;
+      Drop();
     }
 
     // Transfer resources
@@ -239,15 +231,7 @@ WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {
   if (this != &that) {  // Avoid self-assignment
     if (is_valid_) {
-      // Release resource
-      frame_->Reset();
-      frame_.reset();
-      if (bpm_latch_) {
-        bpm_latch_->unlock();
-        bpm_latch_.reset();
-      }
-      replacer_.reset();
-      page_id_ = -1;
+      Drop();
     }
 
     // Transfer resources

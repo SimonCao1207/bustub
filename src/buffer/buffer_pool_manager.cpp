@@ -251,7 +251,10 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
   auto evicted_frame = frames_[free_frame_id.value()];
 
   // Write evicted page back to disk if it is dirty
-  if (evicted_frame->page_id_.has_value()) FlushPage(evicted_frame->page_id_.value());
+  if (evicted_frame->page_id_.has_value()) {
+    FlushPage(evicted_frame->page_id_.value());
+    free_frames_.pop_back();
+  }
 
   // Request page to this free frame
   auto promise = disk_scheduler_->CreatePromise();
@@ -275,7 +278,10 @@ auto BufferPoolManager::BringPageToMemoryForRead(page_id_t page_id) -> std::opti
   auto evicted_frame = frames_[free_frame_id.value()];
 
   // Write evicted page back to disk if it is dirty
-  if (evicted_frame->page_id_.has_value()) FlushPage(evicted_frame->page_id_.value());
+  if (evicted_frame->page_id_.has_value()) {
+    FlushPage(evicted_frame->page_id_.value());
+    free_frames_.pop_back();
+  }
 
   // Request page to this free frame
   auto promise = disk_scheduler_->CreatePromise();
@@ -403,6 +409,7 @@ auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
   }
   page_table_.erase(page_id);
   frame->Reset();
+  free_frames_.push_back(frame_id);
   return true;
 }
 
