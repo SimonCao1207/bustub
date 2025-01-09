@@ -88,12 +88,11 @@ class FrameHeader {
    */
   std::vector<char> data_;
 
+  /** @brief Page ID of the page that the `FrameHeader` is storing */
+  std::optional<page_id_t> page_id_;
+
   /**
    * TODO(P1): You may add any fields or helper functions under here that you think are necessary.
-   *
-   * One potential optimization you could make is storing an optional page ID of the page that the `FrameHeader` is
-   * currently storing. This might allow you to skip searching for the corresponding (page ID, frame ID) pair somewhere
-   * else in the buffer pool manager...
    */
 };
 
@@ -116,14 +115,20 @@ class BufferPoolManager {
   auto Size() const -> size_t;
   auto NewPage() -> page_id_t;
   auto DeletePage(page_id_t page_id) -> bool;
-  auto CheckedWritePage(page_id_t page_id, AccessType access_type = AccessType::Unknown)
-      -> std::optional<WritePageGuard>;
+  auto CheckedWritePage(page_id_t page_id,
+                        AccessType access_type = AccessType::Unknown) -> std::optional<WritePageGuard>;
   auto CheckedReadPage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> std::optional<ReadPageGuard>;
   auto WritePage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> WritePageGuard;
   auto ReadPage(page_id_t page_id, AccessType access_type = AccessType::Unknown) -> ReadPageGuard;
   auto FlushPage(page_id_t page_id) -> bool;
   void FlushAllPages();
   auto GetPinCount(page_id_t page_id) -> std::optional<size_t>;
+  auto IsInMemory(page_id_t page_id) -> bool;
+  auto AcquireWritePageGuard(page_id_t page_id) -> std::optional<WritePageGuard>;
+  auto AcquireReadPageGuard(page_id_t page_id) -> std::optional<ReadPageGuard>;
+  auto BringPageToMemoryForWrite(page_id_t page_id) -> std::optional<WritePageGuard>;
+  auto BringPageToMemoryForRead(page_id_t page_id) -> std::optional<ReadPageGuard>;
+  auto GetFreeFrame() -> std::optional<frame_id_t>;
 
  private:
   /** @brief The number of frames in the buffer pool. */
