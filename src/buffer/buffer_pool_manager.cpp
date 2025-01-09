@@ -222,14 +222,14 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
 auto BufferPoolManager::AcquireWritePageGuard(page_id_t page_id) -> std::optional<WritePageGuard> {
   frame_id_t frame_id = page_table_[page_id];
   auto frame = frames_[frame_id];
-  // There can only be 1 `WritePageGuard` reading/writing a page at a time
-  std::scoped_lock lk(frame->rwlatch_);
+  frame->rwlatch_.lock();
   return WritePageGuard(page_id, frame, replacer_, bpm_latch_);
 }
 
 auto BufferPoolManager::AcquireReadPageGuard(page_id_t page_id) -> std::optional<ReadPageGuard> {
   frame_id_t frame_id = page_table_[page_id];
   auto frame = frames_[frame_id];
+  frame->rwlatch_.lock();
   return ReadPageGuard(page_id, frame, replacer_, bpm_latch_);
 }
 
@@ -249,6 +249,8 @@ auto BufferPoolManager::BringPageToMemoryForWrite(page_id_t page_id) -> std::opt
   auto free_frame_id = GetFreeFrame();
   if (!free_frame_id.has_value()) return std::nullopt;
   auto evicted_frame = frames_[free_frame_id.value()];
+
+  evicted_frame->rwlatch_.lock();
 
   // Write evicted page back to disk if it is dirty
   if (evicted_frame->page_id_.has_value()) {
@@ -276,6 +278,8 @@ auto BufferPoolManager::BringPageToMemoryForRead(page_id_t page_id) -> std::opti
   auto free_frame_id = GetFreeFrame();
   if (!free_frame_id.has_value()) return std::nullopt;
   auto evicted_frame = frames_[free_frame_id.value()];
+
+  evicted_frame->rwlatch_.lock();
 
   // Write evicted page back to disk if it is dirty
   if (evicted_frame->page_id_.has_value()) {

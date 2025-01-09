@@ -141,8 +141,9 @@ void ReadPageGuard::Drop() {
   // Take the bpm's latch here to update frame's eviction state
   std::scoped_lock lk(*bpm_latch_);
 
-  // Unpin frame
+  // Unpin frame and release frame's rw latch
   frame_->pin_count_--;
+  frame_->rwlatch_.unlock();
 
   // Set the frame as evictable on destruction
   replacer_->SetEvictable(frame_->frame_id_, true);
@@ -299,8 +300,9 @@ void WritePageGuard::Drop() {
   // Take the bpm's latch here to update frame's eviction state
   std::scoped_lock lk(*bpm_latch_);
 
-  // Unpin frame
+  // Unpin frame and release frame's rw latch
   frame_->pin_count_--;
+  frame_->rwlatch_.unlock();
 
   // Set the frame as evictable on destruction
   replacer_->SetEvictable(frame_->frame_id_, true);
