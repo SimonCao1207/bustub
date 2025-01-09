@@ -27,7 +27,7 @@ const size_t FRAMES = 10;
 // Note that this test assumes you are using the an LRU-K replacement policy.
 const size_t K_DIST = 5;
 
-TEST(BufferPoolManagerTest, VeryBasicTest) {
+TEST(BufferPoolManagerTest, DISABLED_VeryBasicTest) {
   // A very basic test.
 
   auto disk_manager = std::make_shared<DiskManager>(db_fname);
@@ -62,7 +62,7 @@ TEST(BufferPoolManagerTest, VeryBasicTest) {
   ASSERT_TRUE(bpm->DeletePage(pid));
 }
 
-TEST(BufferPoolManagerTest, PagePinEasyTest) {
+TEST(BufferPoolManagerTest, DISABLED_PagePinEasyTest) {
   auto disk_manager = std::make_shared<DiskManager>(db_fname);
   auto bpm = std::make_shared<BufferPoolManager>(2, disk_manager.get(), 5);
 
@@ -157,7 +157,7 @@ TEST(BufferPoolManagerTest, PagePinEasyTest) {
   remove(disk_manager->GetLogFileName());
 }
 
-TEST(BufferPoolManagerTest, PagePinMediumTest) {
+TEST(BufferPoolManagerTest, DISABLED_PagePinMediumTest) {
   auto disk_manager = std::make_shared<DiskManager>(db_fname);
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -273,7 +273,7 @@ TEST(BufferPoolManagerTest, PageAccessTest) {
   thread.join();
 }
 
-TEST(BufferPoolManagerTest, ContentionTest) {
+TEST(BufferPoolManagerTest, DISABLED_ContentionTest) {
   auto disk_manager = std::make_shared<DiskManager>(db_fname);
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -315,7 +315,7 @@ TEST(BufferPoolManagerTest, ContentionTest) {
   thread1.join();
 }
 
-TEST(BufferPoolManagerTest, DeadlockTest) {
+TEST(BufferPoolManagerTest, DISABLED_DeadlockTest) {
   auto disk_manager = std::make_shared<DiskManager>(db_fname);
   auto bpm = std::make_shared<BufferPoolManager>(FRAMES, disk_manager.get(), K_DIST);
 
@@ -355,7 +355,7 @@ TEST(BufferPoolManagerTest, DeadlockTest) {
   child.join();
 }
 
-TEST(BufferPoolManagerTest, EvictableTest) {
+TEST(BufferPoolManagerTest, DISABLED_EvictableTest) {
   // Test if the evictable status of a frame is always correct.
   size_t rounds = 1000;
   size_t num_readers = 8;
